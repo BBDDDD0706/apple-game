@@ -63,6 +63,8 @@
   .panel .btns { display: grid; gap: 8px; margin-top: 12px; }
   .panel input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; text-align: center; }
   .panel .join { display: flex; gap: 6px; }
+  .panel .join input { -webkit-text-security: disc; text-security: disc; }
+  .panel .join input.shown { -webkit-text-security: none; text-security: none; }
   .panel .join input { text-transform: uppercase; letter-spacing: .15em; font-weight: 800; }
   .panel .join button { white-space: nowrap; }
   .divider { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .8rem; margin: 12px 0 4px; }
@@ -100,6 +102,9 @@
     background: #fff; color: #d8322a; border-radius: 14px; font-size: 2rem; font-weight: 900;
     box-shadow: 0 4px 0 rgba(0,0,0,.15);
   }
+  .code-chars span { transition: filter .25s; }
+  .code-chars.masked span { filter: blur(9px); user-select: none; }
+  .code-label small { font-weight: 600; opacity: .8; letter-spacing: 0; }
   .code-chars span.dot { color: #f3b3ad; animation: blink 1s infinite alternate; }
   @keyframes blink { to { opacity: .4; } }
   .code-actions { display: flex; gap: 8px; justify-content: center; position: relative; z-index: 1; flex-wrap: wrap; }
@@ -177,9 +182,10 @@
     </div>
 
     <div class="code-card">
-      <div class="code-label">초대코드</div>
+      <div class="code-label">초대코드 <small>· 방송 중엔 가려 두세요</small></div>
       <div class="code-chars" id="roomCode"></div>
       <div class="code-actions">
+        <button type="button" id="revealCode">👁 코드 보기</button>
         <button type="button" id="copyCode">📋 코드 복사</button>
         <button type="button" class="primary" id="invite">📨 초대 링크 보내기</button>
       </div>
@@ -231,7 +237,8 @@
           <div class="btns">
             <button type="button" class="green" id="makeRoom">방 만들기</button>
             <div class="join">
-              <input id="joinCode" type="text" maxlength="5" placeholder="초대코드" autocomplete="off">
+              <input id="joinCode" type="text" maxlength="5" placeholder="초대코드" autocomplete="off" spellcheck="false">
+              <button type="button" id="peekJoin" title="코드 보기/가리기">👁</button>
               <button type="button" id="joinRoom">참여</button>
             </div>
           </div>

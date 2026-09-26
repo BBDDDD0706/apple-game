@@ -172,7 +172,7 @@ function show(id) {
 function modeText() {
   if (game.mode === 'daily') return `오늘의 판 · ${kstDate().slice(5).replace('-', '/')}`;
   if (game.mode === 'challenge') return `${challenge.name}님의 도전 · ${challenge.score}점`;
-  if (game.mode === 'room') return `방 ${Room.code}`;
+  if (game.mode === 'room') return '방 대결';
   return '랜덤 판';
 }
 
@@ -293,6 +293,13 @@ function renderRanking() {
 
 // 대기실 그리기
 const MAX_SEATS = 8;
+// 방송용: 초대코드는 기본으로 흐리게 가린다
+function maskCode(masked) {
+  $('roomCode').classList.toggle('masked', masked);
+  $('revealCode').textContent = masked ? '👁 코드 보기' : '🙈 코드 가리기';
+}
+$('revealCode').onclick = () => maskCode(!$('roomCode').classList.contains('masked'));
+$('peekJoin').onclick = () => $('joinCode').classList.toggle('shown');
 function setCode(code) {
   const box = $('roomCode');
   box.replaceChildren();
@@ -378,6 +385,7 @@ function leaveRoom() {
 
 $('makeRoom').onclick = () => {
   setCode(null);
+  maskCode(true);
   renderLobby([]);
   $('roomStart').hidden = true;
   $('lobbyBadge').textContent = '방 만드는 중…';
@@ -389,6 +397,7 @@ $('joinRoom').onclick = () => {
   const code = Room.normalize($('joinCode').value);
   if (code.length !== 5) { toast('초대코드 5자리를 입력해 주세요.'); return; }
   setCode(code);
+  maskCode(true);
   renderLobby([]);
   $('roomStart').hidden = true;
   $('lobbyBadge').textContent = '입장하는 중…';
@@ -402,7 +411,7 @@ $('roomStart').onclick = () => Room.start(randomSeed());
 $('rematch').onclick = () => Room.start(randomSeed());
 $('leaveRoom').onclick = leaveRoom;
 $('copyCode').onclick = async () => {
-  try { await navigator.clipboard.writeText(Room.code); toast(`초대코드 ${Room.code} 복사했어요!`); }
+  try { await navigator.clipboard.writeText(Room.code); toast('초대코드를 복사했어요! (화면에는 가려진 채로 유지돼요)'); }
   catch { prompt('초대코드', Room.code); }
 };
 $('roomLeave2').onclick = leaveRoom;
@@ -463,6 +472,7 @@ if (challenge) {
 const invited = Room.normalize(new URLSearchParams(location.search).get('room'));
 if (invited.length === 5) {
   $('joinCode').value = invited;
+  history.replaceState(null, '', location.pathname); // 주소창에 코드가 남지 않게
   toast('초대코드가 입력됐어요. 닉네임을 쓰고 참여를 눌러 주세요!');
 }
 
