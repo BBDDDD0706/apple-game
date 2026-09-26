@@ -27,6 +27,8 @@ function rng(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+const kstDate = (offsetDays = 0) => new Date(Date.now() + 9 * 3600e3 + offsetDays * 864e5).toISOString().slice(0, 10);
+const dailySeed = () => 'd' + kstDate().replaceAll('-', '');
 const randomSeed = () => Math.random().toString(36).slice(2, 8);
 
 // ---------- 상태 ----------
@@ -170,6 +172,7 @@ function show(id) {
 function modeText() {
   if (game.mode === 'challenge') return `${challenge.name}님의 도전 · ${challenge.score}점`;
   if (game.mode === 'room') return '방 대결';
+  if (game.mode === 'daily') return dailyPlayed() ? '오늘의 판 · 연습' : '오늘의 판 · 랭킹 도전';
   return '혼자 하기';
 }
 
@@ -227,7 +230,7 @@ function finish(cleared) {
   drag = null;
   selbox.style.display = 'none';
 
-  const key = 'best:' + game.mode;
+  const key = game.mode === 'daily' ? 'best:' + game.seed : 'best:' + game.mode;
   const prev = parseInt(store.get(key) || '0', 10);
   if (game.score > prev) store.set(key, String(game.score));
   $('endTitle').textContent = cleared ? '더 묶을 사과가 없어요!' : '시간 종료!';
@@ -235,6 +238,8 @@ function finish(cleared) {
   $('endBest').textContent = game.score > prev && prev > 0 ? `🎉 최고 기록 경신! (이전 ${prev}점)` : `내 최고 기록 ${Math.max(prev, game.score)}점`;
 
   const inRoom = game.mode === 'room';
+  $('dailyResult').hidden = game.mode !== 'daily';
+  if (game.mode === 'daily') submitDaily(game.score);
   $('soloBtns').hidden = inRoom;
   $('roomBtns').hidden = !inRoom;
   $('endPlayers').hidden = !inRoom;
@@ -508,12 +513,13 @@ function toast(msg) {
 }
 
 // ---------- 버튼 ----------
+$('playDaily').onclick = () => { nick(); start('daily', dailySeed()); };
 $('playSolo').onclick = () => { nick(); start('solo', randomSeed()); };
 $('playChallenge').onclick = () => { nick(); start('challenge', challenge.seed); };
 $('again').onclick = () => start(game.mode, game.seed);
 $('share').onclick = share;
 $('quit').onclick = () => { if (game.playing) finish(false); };
-$('home').onclick = () => show('startOverlay');
+$('home').onclick = () => { loadDailyTop(); show('startOverlay'); };
 
 function syncSoundButtons() {
   $('bgmBtn').classList.toggle('off', !Sound.bgmOn);
@@ -535,6 +541,62 @@ if (invited.length === 5) {
   history.replaceState(null, '', location.pathname); // 주소창에 코드가 남지 않게
   toast('초대코드가 입력됐어요. 닉네임을 쓰고 참여를 눌러 주세요!');
 }
+
+// ---------- 오늘의 판 랭킹 ----------
+// 하루 첫 판만 랭킹에 올라간다 (서버도 기기당 하루 한 번만 받는다)
+const dailyPlayed = () => store.get('daily:' + kstDate()) === '1';
+const BAD_WORDS = /(씨발|시발|ㅅㅂ|병신|ㅄ|좆|개새|니애미|섹스|fuck|shit|sex)/i;
+const safeName = (n) => (BAD_WORDS.test(n) ? '플레이어' : n);
+
+function fillTop(ol, rows, myScoreRank) {
+  ol.replaceChildren();
+  if (!rows.length) { const li = document.createElement('li'); li.className = 'muted'; li.textContent = '아직 기록이 없어요. 첫 1등이 되어 보세요!'; ol.append(li); return; }
+  rows.forEach((r) => {
+    const li = document.createElement('li');
+    if (myScoreRank && r.rank === myScoreRank.rank && r.score === myScoreRank.score) li.className = 'me';
+    const b = document.createElement('b'); b.textContent = r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : r.rank + '.';
+    const s = document.createElement('span'); s.textContent = r.name;
+    const e = document.createElement('em'); e.textContent = r.score + '점';
+    li.append(b, s, e);
+    ol.append(li);
+  });
+}
+async function loadDailyTop() {
+  $('dailyTag').textContent = dailyPlayed() ? '(오늘 도전 완료 · 연습)' : '(하루 한 번 랭킹 도전)';
+  try {
+    const [{ data: top }, { data: champ }] = await Promise.all([
+      Room.db.rpc('daily_top', { p_day: kstDate(), p_limit: 10 }),
+      Room.db.rpc('daily_top', { p_day: kstDate(-1), p_limit: 1 }),
+    ]);
+    fillTop($('dailyTopList'), top || []);
+    $('champ').hidden = !champ?.length;
+    if (champ?.length) $('champ').textContent = `👑 어제의 챔피언: ${champ[0].name} (${champ[0].score}점)`;
+  } catch {
+    $('dailyTopList').innerHTML = '<li class="muted">순위를 불러오지 못했어요</li>';
+  }
+}
+async function submitDaily(score) {
+  const first = !dailyPlayed();
+  store.set('daily:' + kstDate(), '1');
+  $('dailyRank').textContent = '순위 확인 중…';
+  $('dailyNote').textContent = '';
+  $('dailyEndList').replaceChildren();
+  try {
+    const { data, error } = await Room.db.rpc('submit_daily', { p_device: Room.deviceId(), p_name: safeName(nick()), p_score: score });
+    if (error || !data?.length) throw error;
+    const me = data[0];
+    $('dailyRank').textContent = `오늘 ${me.total}명 중 ${me.my_rank}위!`;
+    $('dailyNote').textContent = first ? '🏆 오늘의 랭킹에 등록됐어요. 내일 새 판이 열려요!'
+      : `연습 판이라 랭킹엔 첫 기록(${me.my_score}점)만 반영돼요.`;
+    const { data: top } = await Room.db.rpc('daily_top', { p_day: kstDate(), p_limit: 10 });
+    fillTop($('dailyEndList'), top || [], { rank: me.my_rank, score: me.my_score });
+  } catch {
+    $('dailyRank').textContent = '';
+    $('dailyNote').textContent = '랭킹 서버에 연결하지 못했어요. 잠시 후 다시 확인해 주세요.';
+  }
+  loadDailyTop();
+}
+loadDailyTop();
 
 // 첫 화면 배경용 판 (실제 판을 미리 보지 못하게 별도 시드)
 newBoard('preview');

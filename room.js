@@ -216,6 +216,8 @@ const Room = (() => {
     get hostId() { return hostId; },
     get max() { return max; },
     LIMIT,
+    db: sb,
+    deviceId,
     normalize: (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5),
   };
 })();
