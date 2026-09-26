@@ -190,7 +190,7 @@ function start(mode, seed) {
     count.hidden = true;
     Sound.beep(true);
     begin();
-  }, 550);
+  }, 700);
 }
 function begin() {
   newBoard(game.seed);
