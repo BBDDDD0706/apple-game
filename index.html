@@ -63,6 +63,8 @@
   .panel .btns { display: grid; gap: 8px; margin-top: 12px; }
   .panel input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; text-align: center; }
   .panel .join { display: flex; gap: 6px; }
+  .nick-row { display: flex; gap: 6px; }
+  .nick-row button { padding: 8px 12px; }
   .panel .join input { -webkit-text-security: disc; text-security: disc; }
   .panel .join input.shown { -webkit-text-security: none; text-security: none; }
   .panel .join input { text-transform: uppercase; letter-spacing: .15em; font-weight: 800; }
@@ -295,7 +297,10 @@
         <div class="panel">
           <h2>사과게임</h2>
           <p>드래그해서 <b>합이 10</b>이 되게 사과를 묶으세요.<br>2분 동안 많이 없앨수록 높은 점수!</p>
-          <input id="nick" type="text" maxlength="10" placeholder="닉네임">
+          <div class="nick-row">
+            <input id="nick" type="text" maxlength="10" placeholder="닉네임">
+            <button type="button" id="rerollNick" title="랜덤 닉네임">🎲</button>
+          </div>
           <div class="btns">
             <button type="button" class="primary" id="playDaily">🏆 오늘의 판 <small id="dailyTag"></small></button>
             <button type="button" id="playSolo">혼자 하기 (랜덤 판)</button>

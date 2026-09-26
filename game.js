@@ -37,7 +37,19 @@ const game = {
   endAt: 0, timer: null, playing: false, portrait: false, cells: [],
 };
 let roomPlayers = [];
-$('nick').value = store.get('nick') || '';
+// 처음 온 사람에게는 랜덤 닉네임을 지어 준다 (최대 10자)
+const NICK_A = ['용감한', '졸린', '배고픈', '빠른', '느긋한', '신난', '수줍은', '똑똑한', '엉뚱한', '행복한', '새콤한', '달콤한', '반짝이는', '말랑한', '씩씩한'];
+const NICK_B = ['사과', '풋사과', '홍옥', '부사', '다람쥐', '고양이', '너구리', '펭귄', '햄스터', '수달', '토끼', '곰돌이', '여우', '병아리'];
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+function randomNick() {
+  for (;;) {
+    const n = pick(NICK_A) + pick(NICK_B) + Math.floor(Math.random() * 100);
+    if (n.length <= 10) return n;
+  }
+}
+if (!store.get('nick')) store.set('nick', randomNick());
+$('nick').value = store.get('nick') || randomNick();
+$('rerollNick').onclick = () => { $('nick').value = randomNick(); store.set('nick', $('nick').value); };
 
 const nick = () => { const n = $('nick').value.trim().slice(0, 10); store.set('nick', n); return n || '플레이어'; };
 
