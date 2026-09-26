@@ -376,14 +376,11 @@ function renderLobby(snap) {
   const host = Room.isHost && !!me;
   $('maxSetting').hidden = !host;
   $('roomStart').hidden = !host;
-  $('forceStart').hidden = !host;
   $('readyBtn').hidden = Room.isHost || !me;
   if (host) {
-    $('roomStart').disabled = !allReady;
-    $('roomStart').textContent = !guests.length ? '친구가 들어오면 시작할 수 있어요'
-      : allReady ? `게임 시작 (${players.length}명)` : `모두 준비하면 시작할 수 있어요 (${readyN}/${guests.length})`;
-    $('forceStart').disabled = !guests.length;
-    $('lobbyMsg').textContent = !guests.length ? '초대코드를 친구에게 알려 주세요' : allReady ? '모두 준비됐어요!' : '준비 안 된 사람이 있어도 강제 시작할 수 있어요';
+    $('roomStart').disabled = !guests.length;
+    $('roomStart').textContent = !guests.length ? '친구가 들어오면 시작할 수 있어요' : `게임 시작 (${players.length}명)`;
+    $('lobbyMsg').textContent = !guests.length ? '초대코드를 친구에게 알려 주세요' : allReady ? '모두 준비됐어요!' : `준비 ${readyN}/${guests.length}명`;
   } else if (me) {
     myReady = !!me.ready;
     $('readyBtn').textContent = myReady ? '✅ 준비 완료 (누르면 취소)' : '준비';
@@ -430,7 +427,7 @@ function enterLobby(badge) {
   setCode(null);
   maskCode(true);
   renderLobby({ players: [], max: 8, hostId: '' });
-  ['roomStart', 'forceStart', 'readyBtn', 'maxSetting'].forEach((id) => ($(id).hidden = true));
+  ['roomStart', 'readyBtn', 'maxSetting'].forEach((id) => ($(id).hidden = true));
   $('lobbyBadge').textContent = badge;
   $('lobbyBadge').classList.add('wait');
   $('lobbyMsg').textContent = '';
@@ -464,10 +461,10 @@ $('maxUp').onclick = () => applyMax(Room.max + 1);
 $('maxInput').addEventListener('change', () => applyMax(parseInt($('maxInput').value, 10) || Room.max));
 
 $('readyBtn').onclick = () => { myReady = !myReady; Room.setReady(myReady); };
-$('roomStart').onclick = () => Room.start(randomSeed());
-$('forceStart').onclick = () => {
+// 준비 안 한 사람이 있으면 한 번만 물어보고 시작
+$('roomStart').onclick = () => {
   const notReady = lobbySnap.players.filter((p) => p.id !== lobbySnap.hostId && !p.ready).length;
-  if (notReady && !confirm(`준비 안 한 사람이 ${notReady}명 있어요. 그래도 시작할까요?`)) return;
+  if (notReady && !confirm(`아직 준비 안 한 사람이 ${notReady}명 있어요. 시작할까요?`)) return;
   Room.start(randomSeed());
 };
 $('toLobby').onclick = () => { renderLobby(lobbySnap); show('lobby'); };
