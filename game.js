@@ -27,8 +27,6 @@ function rng(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-const kstDate = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
-const dailySeed = () => 'd' + kstDate().replaceAll('-', '');
 const randomSeed = () => Math.random().toString(36).slice(2, 8);
 
 // ---------- 상태 ----------
@@ -170,10 +168,9 @@ function show(id) {
 }
 
 function modeText() {
-  if (game.mode === 'daily') return `오늘의 판 · ${kstDate().slice(5).replace('-', '/')}`;
   if (game.mode === 'challenge') return `${challenge.name}님의 도전 · ${challenge.score}점`;
   if (game.mode === 'room') return '방 대결';
-  return '랜덤 판';
+  return '혼자 하기';
 }
 
 // 3-2-1 카운트다운 뒤 시작
@@ -230,7 +227,7 @@ function finish(cleared) {
   drag = null;
   selbox.style.display = 'none';
 
-  const key = game.mode === 'daily' ? 'best:' + game.seed : 'best:' + game.mode;
+  const key = 'best:' + game.mode;
   const prev = parseInt(store.get(key) || '0', 10);
   if (game.score > prev) store.set(key, String(game.score));
   $('endTitle').textContent = cleared ? '더 묶을 사과가 없어요!' : '시간 종료!';
@@ -514,7 +511,6 @@ function toast(msg) {
 }
 
 // ---------- 버튼 ----------
-$('playDaily').onclick = () => { nick(); start('daily', dailySeed()); };
 $('playSolo').onclick = () => { nick(); start('solo', randomSeed()); };
 $('playChallenge').onclick = () => { nick(); start('challenge', challenge.seed); };
 $('again').onclick = () => start(game.mode, game.seed);
