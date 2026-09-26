@@ -1,153 +1,176 @@
-// 실시간 방: PeerJS(WebRTC) 기반. 방장 브라우저가 방 역할을 하고, 참가자는 초대코드로 방장에게 직접 연결한다.
-// 별도 서버/가입 없이 PeerJS 공개 중계 서버로 연결만 맺는다.
+// 실시간 방: Supabase Realtime(브로드캐스트 + 접속 상태) 중계.
+// 참가자끼리 직접 연결하지 않으므로 서로의 IP가 노출되지 않고, 방장 인터넷에 부담이 몰리지 않는다.
+// 방 상태(참가자·준비·인원 제한)는 방장 브라우저가 관리하고 채널로 알린다.
 const Room = (() => {
-  const PREFIX = 'budle-apple-';
+  const SUPABASE_URL = 'https://wkyqotnysmuzjgwlbnlf.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable__JtY-5lIILQt-cjrvVyw0A_VZrSQdsR'; // 공개용 키 (브라우저에 노출돼도 되는 키)
   const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const LIMIT = 64;
-  let peer = null, conn = null, conns = {}, players = {}, order = [], h = {};
-  let max = 8, hostId = '', flushT = null;
+  const SCORE_EVERY = 1500; // 점수는 1.5초에 한 번만 모아서 보낸다 (메시지 사용량 절약)
+
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  let ch = null, h = {};
+  let players = {}, order = [], scores = {};
+  let max = 8, hostId = '', joined = false, failT = null, scoreT = null, pendingScore = null;
   let dids = {}, banned = new Set(); // 기기 식별값 (강퇴한 기기는 다시 못 들어온다)
   let state = { isHost: false, code: '', myId: '', inGame: false };
 
+  const uid = () => Math.random().toString(36).slice(2, 10);
   const clean = (s) => String(s || '').trim().slice(0, 10) || '플레이어';
   const newCode = () => Array.from({ length: 5 }, () => ALPHABET[Math.floor(Math.random() * ALPHABET.length)]).join('');
   function deviceId() {
     try {
       let d = localStorage.getItem('did');
-      if (!d) { d = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('did', d); }
+      if (!d) { d = uid() + Date.now().toString(36); localStorage.setItem('did', d); }
       return d;
     } catch { return ''; }
   }
-  const list = () => order.filter((id) => players[id]).map((id) => ({ id, ...players[id] }));
-  const snapshot = () => ({ players: list(), max, hostId });
+  const list = () => order.filter((id) => players[id]).map((id) => ({
+    id, name: players[id].name, ready: players[id].ready,
+    score: scores[id]?.v || 0, done: !!scores[id]?.d,
+  }));
 
-  function broadcast(msg) {
-    Object.values(conns).forEach((c) => { try { c.send(msg); } catch {} });
+  function send(msg) {
+    if (ch) ch.send({ type: 'broadcast', event: 'm', payload: msg });
   }
-  function pushLobby() { const s = snapshot(); broadcast({ t: 'lobby', ...s }); h.onLobby?.(s); }
-  // 점수는 인원이 많아도 부담이 없도록 0.25초마다 한 번만 모아서 보낸다
-  function pushScores() {
-    if (flushT) return;
-    flushT = setTimeout(() => {
-      flushT = null;
-      const l = list();
-      broadcast({ t: 'scores', players: l });
-      h.onScores?.(l);
-    }, 250);
+  function open(code, onJoined) {
+    ch = sb.channel('apple:' + code, { config: { broadcast: { self: false }, presence: { key: state.myId } } });
+    ch.on('broadcast', { event: 'm' }, ({ payload }) => onMsg(payload || {}));
+    ch.on('presence', { event: 'leave' }, ({ key }) => onLeave(key));
+    ch.subscribe((status) => {
+      if (status === 'SUBSCRIBED') onJoined();
+      else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') { h.onError?.('연결에 문제가 생겼어요. 잠시 후 다시 시도해 주세요.'); leave(); }
+    });
   }
-  function addPlayer(id, name, ready) { players[id] = { name: clean(name), score: 0, done: false, ready }; order.push(id); }
-  function removePlayer(id) { delete players[id]; delete conns[id]; order = order.filter((x) => x !== id); }
+
+  // ---- 방장: 방 상태 알리기 ----
+  function pushLobby() {
+    const snap = { players: list(), max, hostId };
+    send({ t: 'lobby', ...snap });
+    h.onLobby?.(snap);
+  }
+  function addPlayer(id, name, ready) {
+    players[id] = { name: clean(name), ready };
+    if (!order.includes(id)) order.push(id);
+  }
+  function removePlayer(id) { delete players[id]; delete scores[id]; delete dids[id]; order = order.filter((x) => x !== id); }
   function checkRoundOver() {
-    if (state.inGame && order.every((id) => !players[id] || players[id].done)) state.inGame = false;
+    if (state.inGame && order.every((id) => scores[id]?.d)) state.inGame = false;
   }
 
-  function hostHandle(c, msg) {
-    if (!msg || typeof msg !== 'object') return;
-    const p = players[c.peer];
-    if (msg.t === 'hello') {
-      const did = String(msg.did || '').slice(0, 40);
-      if (did && banned.has(did)) return deny(c, '방장이 내보낸 방이라 다시 들어갈 수 없어요.');
-      if (state.inGame) return deny(c, '이미 게임이 진행 중이에요. 판이 끝난 뒤 다시 들어와 주세요.');
-      if (order.length >= max) return deny(c, `방이 가득 찼어요 (최대 ${max}명)`);
-      conns[c.peer] = c;
-      dids[c.peer] = did;
-      addPlayer(c.peer, msg.name, false);
-      pushLobby();
-    } else if (!p) {
+  function onMsg(m) {
+    // 누구에게서 왔든 점수 메시지는 모두가 직접 반영한다
+    if (m.t === 's' && players[m.f]) {
+      scores[m.f] = { v: Math.max(0, Math.min(999, m.v | 0)), d: !!m.d };
+      if (state.isHost) checkRoundOver();
+      h.onScores?.(list());
       return;
-    } else if (msg.t === 'score') {
-      p.score = Math.max(0, Math.min(999, msg.score | 0));
-      p.done = !!msg.done;
-      checkRoundOver();
-      pushScores();
-    } else if (msg.t === 'name') {
-      p.name = clean(msg.name);
+    }
+    if (state.isHost) return hostMsg(m);
+    // 참가자
+    if (m.t === 'lobby') {
+      joined = true;
+      clearTimeout(failT);
+      hostId = String(m.hostId || '');
+      max = Math.max(2, Math.min(LIMIT, m.max | 0));
+      players = {}; order = [];
+      (m.players || []).forEach((p) => { players[p.id] = { name: clean(p.name), ready: !!p.ready }; order.push(p.id); });
+      h.onLobby?.({ players: list(), max, hostId });
+    } else if (m.t === 'start') {
+      scores = {};
+      state.inGame = true;
+      h.onStart?.(String(m.seed));
+    } else if (m.to === state.myId && m.t === 'deny') {
+      h.onError?.(String(m.why)); leave();
+    } else if (m.to === state.myId && m.t === 'kick') {
+      h.onClose?.('방장이 나를 방에서 내보냈어요.'); leave();
+    }
+  }
+
+  function hostMsg(m) {
+    const from = String(m.f || '');
+    if (!from) return;
+    if (m.t === 'hello') {
+      const did = String(m.did || '').slice(0, 40);
+      const deny = (why) => send({ t: 'deny', to: from, why });
+      if (did && banned.has(did)) return deny('방장이 내보낸 방이라 다시 들어갈 수 없어요.');
+      if (players[from]) return pushLobby();
+      if (state.inGame) return deny('이미 게임이 진행 중이에요. 판이 끝난 뒤 다시 들어와 주세요.');
+      if (order.length >= max) return deny(`방이 가득 찼어요 (최대 ${max}명)`);
+      dids[from] = did;
+      addPlayer(from, m.name, false);
       pushLobby();
-    } else if (msg.t === 'ready') {
-      p.ready = !!msg.ready;
+    } else if (!players[from]) {
+      return;
+    } else if (m.t === 'name') {
+      players[from].name = clean(m.name);
+      pushLobby();
+    } else if (m.t === 'ready') {
+      players[from].ready = !!m.ready;
       pushLobby();
     }
   }
-  function deny(c, why) {
-    try { c.send({ t: 'deny', why }); } catch {}
-    setTimeout(() => c.close(), 300);
+
+  function onLeave(key) {
+    if (!ch) return;
+    if (!state.isHost) {
+      if (key === hostId) { h.onClose?.('방장이 방을 나갔어요.'); leave(); }
+      return;
+    }
+    if (players[key] && key !== hostId) {
+      removePlayer(key);
+      checkRoundOver();
+      pushLobby();
+    }
   }
 
-  function host(name, handlers) {
+  // ---- 방 만들기 / 들어가기 ----
+  function host(name, handlers, tries = 0) {
     h = handlers;
-    state = { isHost: true, code: newCode(), myId: '', inGame: false };
-    players = {}; order = []; conns = {}; dids = {}; banned = new Set();
-    peer = new Peer(PREFIX + state.code, { debug: 0 });
-    peer.on('open', (id) => {
-      state.myId = hostId = id;
-      addPlayer(id, name, true);
+    reset();
+    state = { isHost: true, code: newCode(), myId: uid(), inGame: false };
+    hostId = state.myId;
+    open(state.code, async () => {
+      // 같은 코드의 방이 이미 있으면 새 코드로 다시
+      await new Promise((r) => setTimeout(r, 600));
+      if (Object.keys(ch.presenceState()).length && tries < 5) { await sb.removeChannel(ch); ch = null; return host(name, handlers, tries + 1); }
+      await ch.track({ host: true });
+      addPlayer(state.myId, name, true);
       h.onReady?.(state.code);
       pushLobby();
-    });
-    peer.on('connection', (c) => {
-      c.on('data', (m) => hostHandle(c, m));
-      c.on('close', () => {
-        if (!players[c.peer]) return;
-        removePlayer(c.peer);
-        checkRoundOver();
-        state.inGame ? pushScores() : pushLobby();
-      });
-    });
-    peer.on('error', (e) => {
-      if (e.type === 'unavailable-id') { peer.destroy(); host(name, handlers); return; } // 코드 충돌 → 새 코드
-      h.onError?.('연결에 문제가 생겼어요. 잠시 후 다시 시도해 주세요.');
     });
   }
 
   function join(code, name, handlers) {
     h = handlers;
-    state = { isHost: false, code, myId: '', inGame: false };
-    peer = new Peer({ debug: 0 });
-    const fail = setTimeout(() => { h.onError?.('방을 찾을 수 없어요. 초대코드를 확인해 주세요.'); leave(); }, 10000);
-    peer.on('open', (id) => {
-      state.myId = id;
-      conn = peer.connect(PREFIX + code, { reliable: true });
-      conn.on('open', () => { clearTimeout(fail); conn.send({ t: 'hello', name: clean(name), did: deviceId() }); });
-      conn.on('data', (msg) => {
-        if (!msg || typeof msg !== 'object') return;
-        if (msg.t === 'lobby') {
-          hostId = String(msg.hostId || '');
-          max = Math.max(2, Math.min(LIMIT, msg.max | 0));
-          h.onLobby?.({ players: msg.players || [], max, hostId });
-        } else if (msg.t === 'scores') h.onScores?.(msg.players || []);
-        else if (msg.t === 'start') { state.inGame = true; h.onStart?.(String(msg.seed)); }
-        else if (msg.t === 'deny') { h.onError?.(String(msg.why)); leave(); }
-        else if (msg.t === 'kick') { h.onClose?.('방장이 나를 방에서 내보냈어요.'); leave(); }
-      });
-      conn.on('close', () => { if (peer) { h.onClose?.('방장이 방을 나갔어요.'); leave(); } });
-    });
-    peer.on('error', (e) => {
-      clearTimeout(fail);
-      h.onError?.(e.type === 'peer-unavailable' ? '방을 찾을 수 없어요. 초대코드를 확인해 주세요.' : '연결에 문제가 생겼어요. 잠시 후 다시 시도해 주세요.');
-      leave();
+    reset();
+    state = { isHost: false, code, myId: uid(), inGame: false };
+    open(code, async () => {
+      await ch.track({});
+      send({ t: 'hello', f: state.myId, name: clean(name), did: deviceId() });
+      failT = setTimeout(() => { if (!joined) { h.onError?.('방을 찾을 수 없어요. 초대코드를 확인해 주세요.'); leave(); } }, 6000);
     });
   }
 
   // ---- 방장 전용 ----
   function start(seed) {
     state.inGame = true;
-    order.forEach((id) => { const p = players[id]; p.score = 0; p.done = false; if (id !== hostId) p.ready = false; });
-    broadcast({ t: 'start', seed });
+    scores = {};
+    order.forEach((id) => { if (id !== hostId) players[id].ready = false; });
+    send({ t: 'start', seed });
     h.onStart?.(seed);
     pushLobby();
   }
   function kick(id) {
-    if (!state.isHost || id === hostId || !conns[id]) return;
-    const c = conns[id];
-    try { c.send({ t: 'kick' }); } catch {}
+    if (!state.isHost || id === hostId || !players[id]) return;
+    send({ t: 'kick', to: id });
     if (dids[id]) banned.add(dids[id]);
     removePlayer(id);
-    setTimeout(() => c.close(), 300);
     pushLobby();
   }
   function setMax(n) {
     if (!state.isHost) return max;
-    max = Math.max(2, Math.min(LIMIT, n | 0, LIMIT));
+    max = Math.max(2, Math.min(LIMIT, n | 0));
     if (max < order.length) max = order.length;
     pushLobby();
     return max;
@@ -155,35 +178,38 @@ const Room = (() => {
 
   // ---- 공통 ----
   function sendScore(score, done) {
-    if (state.isHost) {
-      const me = players[state.myId];
-      if (!me) return;
-      me.score = score; me.done = done;
-      checkRoundOver();
-      pushScores();
-    } else if (conn) {
-      try { conn.send({ t: 'score', score, done }); } catch {}
-    }
+    scores[state.myId] = { v: score, d: done };
+    if (state.isHost) checkRoundOver();
+    h.onScores?.(list());
+    pendingScore = { t: 's', f: state.myId, v: score, d: done };
+    if (done) { clearTimeout(scoreT); scoreT = null; send(pendingScore); pendingScore = null; return; }
+    if (scoreT) return;
+    scoreT = setTimeout(() => { scoreT = null; if (pendingScore) send(pendingScore); pendingScore = null; }, SCORE_EVERY);
   }
   function setName(name) {
     if (state.isHost) { if (players[state.myId]) players[state.myId].name = clean(name); pushLobby(); }
-    else if (conn) { try { conn.send({ t: 'name', name: clean(name) }); } catch {} }
+    else send({ t: 'name', f: state.myId, name: clean(name) });
   }
   function setReady(ready) {
-    if (!state.isHost && conn) { try { conn.send({ t: 'ready', ready }); } catch {} }
+    if (!state.isHost) send({ t: 'ready', f: state.myId, ready });
   }
 
+  function reset() {
+    players = {}; order = []; scores = {}; dids = {}; banned = new Set();
+    max = 8; hostId = ''; joined = false;
+    clearTimeout(failT); clearTimeout(scoreT); scoreT = null; pendingScore = null;
+  }
   function leave() {
-    const p = peer;
-    peer = null; conn = null; conns = {}; players = {}; order = []; hostId = '';
-    clearTimeout(flushT); flushT = null;
+    const c = ch;
+    ch = null;
+    reset();
     state = { isHost: false, code: '', myId: '', inGame: false };
-    try { p && p.destroy(); } catch {}
+    if (c) sb.removeChannel(c);
   }
 
   return {
     host, join, start, kick, setMax, sendScore, setName, setReady, leave,
-    get active() { return !!peer; },
+    get active() { return !!ch; },
     get isHost() { return state.isHost; },
     get code() { return state.code; },
     get myId() { return state.myId; },
