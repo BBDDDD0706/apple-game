@@ -3,47 +3,84 @@
 const Room = (() => {
   const PREFIX = 'budle-apple-';
   const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const MAX = 8;
-  let peer = null, conn = null, conns = {}, players = {}, h = {}, state = { isHost: false, code: '', myId: '', inGame: false };
+  const LIMIT = 64;
+  let peer = null, conn = null, conns = {}, players = {}, order = [], h = {};
+  let max = 8, hostId = '', flushT = null;
+  let state = { isHost: false, code: '', myId: '', inGame: false };
 
   const clean = (s) => String(s || '').trim().slice(0, 10) || '플레이어';
   const newCode = () => Array.from({ length: 5 }, () => ALPHABET[Math.floor(Math.random() * ALPHABET.length)]).join('');
-  const list = () => Object.entries(players).map(([id, p]) => ({ id, ...p }));
+  const list = () => order.filter((id) => players[id]).map((id) => ({ id, ...players[id] }));
+  const snapshot = () => ({ players: list(), max, hostId });
 
   function broadcast(msg) {
     Object.values(conns).forEach((c) => { try { c.send(msg); } catch {} });
   }
-  function pushLobby() { const l = list(); broadcast({ t: 'lobby', players: l }); h.onLobby?.(l); }
-  function pushScores() { const l = list(); broadcast({ t: 'scores', players: l }); h.onScores?.(l); }
+  function pushLobby() { const s = snapshot(); broadcast({ t: 'lobby', ...s }); h.onLobby?.(s); }
+  // 점수는 인원이 많아도 부담이 없도록 0.25초마다 한 번만 모아서 보낸다
+  function pushScores() {
+    if (flushT) return;
+    flushT = setTimeout(() => {
+      flushT = null;
+      const l = list();
+      broadcast({ t: 'scores', players: l });
+      h.onScores?.(l);
+    }, 250);
+  }
+  function addPlayer(id, name, ready) { players[id] = { name: clean(name), score: 0, done: false, ready }; order.push(id); }
+  function removePlayer(id) { delete players[id]; delete conns[id]; order = order.filter((x) => x !== id); }
+  function checkRoundOver() {
+    if (state.inGame && order.every((id) => !players[id] || players[id].done)) state.inGame = false;
+  }
 
   function hostHandle(c, msg) {
     if (!msg || typeof msg !== 'object') return;
+    const p = players[c.peer];
     if (msg.t === 'hello') {
-      if (state.inGame) { c.send({ t: 'deny', why: '이미 게임이 진행 중이에요. 판이 끝난 뒤 다시 들어와 주세요.' }); setTimeout(() => c.close(), 300); return; }
-      if (Object.keys(players).length >= MAX) { c.send({ t: 'deny', why: `방이 가득 찼어요 (최대 ${MAX}명)` }); setTimeout(() => c.close(), 300); return; }
+      if (state.inGame) return deny(c, '이미 게임이 진행 중이에요. 판이 끝난 뒤 다시 들어와 주세요.');
+      if (order.length >= max) return deny(c, `방이 가득 찼어요 (최대 ${max}명)`);
       conns[c.peer] = c;
-      players[c.peer] = { name: clean(msg.name), score: 0, done: false };
+      addPlayer(c.peer, msg.name, false);
       pushLobby();
-    } else if (msg.t === 'score' && players[c.peer]) {
-      players[c.peer].score = Math.max(0, Math.min(999, msg.score | 0));
-      players[c.peer].done = !!msg.done;
+    } else if (!p) {
+      return;
+    } else if (msg.t === 'score') {
+      p.score = Math.max(0, Math.min(999, msg.score | 0));
+      p.done = !!msg.done;
+      checkRoundOver();
       pushScores();
+    } else if (msg.t === 'name') {
+      p.name = clean(msg.name);
+      pushLobby();
+    } else if (msg.t === 'ready') {
+      p.ready = !!msg.ready;
+      pushLobby();
     }
+  }
+  function deny(c, why) {
+    try { c.send({ t: 'deny', why }); } catch {}
+    setTimeout(() => c.close(), 300);
   }
 
   function host(name, handlers) {
     h = handlers;
     state = { isHost: true, code: newCode(), myId: '', inGame: false };
+    players = {}; order = []; conns = {};
     peer = new Peer(PREFIX + state.code, { debug: 0 });
     peer.on('open', (id) => {
-      state.myId = id;
-      players = { [id]: { name: clean(name), score: 0, done: false } };
+      state.myId = hostId = id;
+      addPlayer(id, name, true);
       h.onReady?.(state.code);
       pushLobby();
     });
     peer.on('connection', (c) => {
       c.on('data', (m) => hostHandle(c, m));
-      c.on('close', () => { delete conns[c.peer]; delete players[c.peer]; state.inGame ? pushScores() : pushLobby(); });
+      c.on('close', () => {
+        if (!players[c.peer]) return;
+        removePlayer(c.peer);
+        checkRoundOver();
+        state.inGame ? pushScores() : pushLobby();
+      });
     });
     peer.on('error', (e) => {
       if (e.type === 'unavailable-id') { peer.destroy(); host(name, handlers); return; } // 코드 충돌 → 새 코드
@@ -62,10 +99,14 @@ const Room = (() => {
       conn.on('open', () => { clearTimeout(fail); conn.send({ t: 'hello', name: clean(name) }); });
       conn.on('data', (msg) => {
         if (!msg || typeof msg !== 'object') return;
-        if (msg.t === 'lobby') h.onLobby?.(msg.players || []);
-        else if (msg.t === 'scores') h.onScores?.(msg.players || []);
+        if (msg.t === 'lobby') {
+          hostId = String(msg.hostId || '');
+          max = Math.max(2, Math.min(LIMIT, msg.max | 0));
+          h.onLobby?.({ players: msg.players || [], max, hostId });
+        } else if (msg.t === 'scores') h.onScores?.(msg.players || []);
         else if (msg.t === 'start') { state.inGame = true; h.onStart?.(String(msg.seed)); }
         else if (msg.t === 'deny') { h.onError?.(String(msg.why)); leave(); }
+        else if (msg.t === 'kick') { h.onClose?.('방장이 나를 방에서 내보냈어요.'); leave(); }
       });
       conn.on('close', () => { if (peer) { h.onClose?.('방장이 방을 나갔어요.'); leave(); } });
     });
@@ -76,41 +117,67 @@ const Room = (() => {
     });
   }
 
-  function start(seed) { // 방장만
+  // ---- 방장 전용 ----
+  function start(seed) {
     state.inGame = true;
-    Object.values(players).forEach((p) => { p.score = 0; p.done = false; });
+    order.forEach((id) => { const p = players[id]; p.score = 0; p.done = false; if (id !== hostId) p.ready = false; });
     broadcast({ t: 'start', seed });
     h.onStart?.(seed);
-    pushScores();
+    pushLobby();
+  }
+  function kick(id) {
+    if (!state.isHost || id === hostId || !conns[id]) return;
+    const c = conns[id];
+    try { c.send({ t: 'kick' }); } catch {}
+    removePlayer(id);
+    setTimeout(() => c.close(), 300);
+    pushLobby();
+  }
+  function setMax(n) {
+    if (!state.isHost) return max;
+    max = Math.max(2, Math.min(LIMIT, n | 0, LIMIT));
+    if (max < order.length) max = order.length;
+    pushLobby();
+    return max;
   }
 
+  // ---- 공통 ----
   function sendScore(score, done) {
     if (state.isHost) {
       const me = players[state.myId];
       if (!me) return;
       me.score = score; me.done = done;
-      if (done && Object.values(players).every((p) => p.done)) state.inGame = false;
+      checkRoundOver();
       pushScores();
     } else if (conn) {
       try { conn.send({ t: 'score', score, done }); } catch {}
     }
   }
-
-  function endRound() { state.inGame = false; }
+  function setName(name) {
+    if (state.isHost) { if (players[state.myId]) players[state.myId].name = clean(name); pushLobby(); }
+    else if (conn) { try { conn.send({ t: 'name', name: clean(name) }); } catch {} }
+  }
+  function setReady(ready) {
+    if (!state.isHost && conn) { try { conn.send({ t: 'ready', ready }); } catch {} }
+  }
 
   function leave() {
     const p = peer;
-    peer = null; conn = null; conns = {}; players = {};
+    peer = null; conn = null; conns = {}; players = {}; order = []; hostId = '';
+    clearTimeout(flushT); flushT = null;
     state = { isHost: false, code: '', myId: '', inGame: false };
     try { p && p.destroy(); } catch {}
   }
 
   return {
-    host, join, start, sendScore, endRound, leave,
+    host, join, start, kick, setMax, sendScore, setName, setReady, leave,
     get active() { return !!peer; },
     get isHost() { return state.isHost; },
     get code() { return state.code; },
     get myId() { return state.myId; },
+    get hostId() { return hostId; },
+    get max() { return max; },
+    LIMIT,
     normalize: (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5),
   };
 })();

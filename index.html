@@ -75,7 +75,21 @@
   .players li.me { outline: 2px solid var(--accent); }
   .players li .rank { color: var(--muted); margin-right: 8px; }
   .challenge { background: color-mix(in srgb, var(--accent) 12%, var(--card)); border-radius: 12px; padding: 10px; margin: 10px 0; font-weight: 700; }
-  .count { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 6rem; font-weight: 900; color: var(--accent); z-index: 6; pointer-events: none; text-shadow: 0 4px 0 var(--card); }
+  .count {
+    position: absolute; inset: 0; z-index: 6; pointer-events: none; border-radius: 16px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    background: rgba(20, 12, 8, .55); backdrop-filter: blur(3px);
+  }
+  .count b {
+    width: 150px; height: 150px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 35% 30%, #ff7a6b, #e8352b 55%, #b3201a); color: #fff;
+    font-size: 5.5rem; font-weight: 900; line-height: 1; border: 6px solid #fff;
+    box-shadow: 0 10px 30px rgba(0,0,0,.35); text-shadow: 0 3px 0 rgba(120,10,5,.4);
+    animation: countPop 1s ease-out;
+  }
+  .count b.go { background: radial-gradient(circle at 35% 30%, #8fe07f, #3f9b4f 60%, #2a7536); font-size: 3.4rem; }
+  .count small { color: #fff; font-weight: 800; font-size: 1.1rem; text-shadow: 0 2px 6px rgba(0,0,0,.5); }
+  @keyframes countPop { 0% { transform: scale(1.8); opacity: 0; } 25% { transform: scale(.92); opacity: 1; } 40% { transform: scale(1.04); } 100% { transform: scale(1); } }
   .count[hidden] { display: none; }
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-weight: 700; display: none; z-index: 10; max-width: 90vw; text-align: center; }
   /* ---------- 대기실 ---------- */
@@ -114,8 +128,29 @@
   .seats-head h2 { margin: 0; font-size: 1.1rem; }
   .seats-head h2 span { color: var(--muted); font-weight: 700; font-size: .95rem; margin-left: 4px; }
   .lobby-msg { color: var(--muted); font-size: .9rem; }
-  .seats { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-  @media (max-width: 480px) { .seats { grid-template-columns: repeat(2, 1fr); } }
+  .seats { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
+  .seat .kick {
+    position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; padding: 0; border-radius: 50%;
+    font-size: .8rem; line-height: 1; color: var(--muted); background: var(--bg); border: 1px solid var(--line);
+  }
+  .seat .kick:hover { color: #fff; background: var(--accent); border-color: var(--accent); }
+  .seat .tag.ready { background: color-mix(in srgb, var(--accent-2) 18%, var(--card)); color: var(--accent-2); }
+  .seat.is-ready { border-color: color-mix(in srgb, var(--accent-2) 55%, var(--line)); }
+  .lobby-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+  .setting { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 12px; }
+  .setting label { display: block; font-size: .8rem; font-weight: 800; color: var(--muted); margin-bottom: 6px; }
+  .setting-row { display: flex; gap: 6px; }
+  .setting-row input { flex: 1; min-width: 0; padding: 9px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; font-weight: 700; }
+  .setting-row button { padding: 8px 12px; }
+  .stepper input { text-align: center; -moz-appearance: textfield; }
+  .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; }
+  .stepper button { width: 44px; font-size: 1.1rem; }
+  #readyCount { color: var(--accent-2); }
+  .lobby-actions { display: grid; gap: 8px; }
+  .start-btn.readied { background: var(--card); color: var(--accent-2); border: 2px solid var(--accent-2); box-shadow: none; }
+  .force-btn { width: 100%; padding: 12px; border-radius: 14px; background: var(--card); color: var(--accent); border: 2px solid var(--accent); font-weight: 800; }
+  .force-btn:disabled { color: var(--muted); border-color: var(--line); cursor: not-allowed; }
+  .panel .players { max-height: 40vh; overflow: auto; }
   .seat {
     position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 16px;
     padding: 14px 8px 10px; text-align: center; min-height: 118px; display: flex; flex-direction: column; align-items: center; gap: 6px;
@@ -191,8 +226,26 @@
       </div>
     </div>
 
+    <div class="lobby-settings">
+      <div class="setting">
+        <label for="roomName">내 이름</label>
+        <div class="setting-row">
+          <input id="roomName" type="text" maxlength="10" placeholder="이름">
+          <button type="button" id="renameBtn">변경</button>
+        </div>
+      </div>
+      <div class="setting" id="maxSetting" hidden>
+        <label for="maxInput">최대 인원 (2~64명)</label>
+        <div class="setting-row stepper">
+          <button type="button" id="maxDown" aria-label="줄이기">−</button>
+          <input id="maxInput" type="number" min="2" max="64" value="8" inputmode="numeric">
+          <button type="button" id="maxUp" aria-label="늘리기">＋</button>
+        </div>
+      </div>
+    </div>
+
     <div class="seats-head">
-      <h2>참가자 <span id="seatCount">0/8</span></h2>
+      <h2>참가자 <span id="seatCount">0/8</span> <span id="readyCount"></span></h2>
       <span class="lobby-msg" id="lobbyMsg"></span>
     </div>
     <ul class="seats" id="lobbyPlayers"></ul>
@@ -201,7 +254,11 @@
       <span>⏱ 2분</span><span>🍎 같은 판으로 대결</span><span>🏆 많이 없앤 사람이 승리</span>
     </div>
 
-    <button type="button" class="start-btn" id="roomStart" hidden>게임 시작</button>
+    <div class="lobby-actions">
+      <button type="button" class="start-btn" id="readyBtn" hidden>준비</button>
+      <button type="button" class="start-btn" id="roomStart" hidden>게임 시작</button>
+      <button type="button" class="force-btn" id="forceStart" hidden>⚡ 강제 시작</button>
+    </div>
   </section>
 
   <section class="game" id="gameScreen">
@@ -259,8 +316,7 @@
             <button type="button" id="home">처음으로</button>
           </div>
           <div class="btns" id="roomBtns" hidden>
-            <button type="button" class="primary" id="rematch" hidden>한 판 더</button>
-            <p id="rematchMsg" hidden>방장이 다음 판을 시작하길 기다리는 중…</p>
+            <button type="button" class="primary" id="toLobby">대기실로</button>
             <button type="button" id="roomLeave2">방 나가기</button>
           </div>
         </div>
