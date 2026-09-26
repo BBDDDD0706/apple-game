@@ -37,15 +37,8 @@ const game = {
   endAt: 0, timer: null, playing: false, portrait: false, cells: [],
 };
 let roomPlayers = [];
-const challenge = readChallenge();
 $('nick').value = store.get('nick') || '';
 
-function readChallenge() {
-  const p = new URLSearchParams(location.search);
-  const c = p.get('c'), s = parseInt(p.get('s'), 10);
-  if (!c || !/^[a-z0-9]{1,16}$/.test(c) || !Number.isFinite(s)) return null;
-  return { seed: c, score: Math.max(0, Math.min(s, 999)), name: (p.get('n') || '친구').slice(0, 10) };
-}
 const nick = () => { const n = $('nick').value.trim().slice(0, 10); store.set('nick', n); return n || '플레이어'; };
 
 // ---------- 판 그리기 ----------
@@ -170,7 +163,6 @@ function show(id) {
 }
 
 function modeText() {
-  if (game.mode === 'challenge') return `${challenge.name}님의 도전 · ${challenge.score}점`;
   if (game.mode === 'room') return '방 대결';
   if (game.mode === 'daily') return dailyPlayed() ? '오늘의 판 · 연습' : '오늘의 판 · 랭킹 도전';
   return '혼자 하기';
@@ -186,9 +178,7 @@ function start(mode, seed) {
   $('time').style.width = '100%';
   $('time').classList.remove('low');
   const count = $('count');
-  const showNum = (text, go) => {
-    count.innerHTML = `<b class="${go ? 'go' : ''}">${text}</b><small>${go ? '' : '합이 10이 되게 묶어요!'}</small>`;
-  };
+  const showNum = (text) => { count.innerHTML = `<b>${text}</b>`; };
   let n = 3;
   count.hidden = false;
   showNum(n);
@@ -197,11 +187,10 @@ function start(mode, seed) {
     n--;
     if (n > 0) { showNum(n); Sound.beep(false); return; }
     clearInterval(iv);
-    showNum('시작!', true);
+    count.hidden = true;
     Sound.beep(true);
     begin();
-    setTimeout(() => (count.hidden = true), 600);
-  }, 1000);
+  }, 550);
 }
 function begin() {
   newBoard(game.seed);
@@ -243,14 +232,6 @@ function finish(cleared) {
   $('soloBtns').hidden = inRoom;
   $('roomBtns').hidden = !inRoom;
   $('endPlayers').hidden = !inRoom;
-  const vs = $('endVs');
-  vs.hidden = game.mode !== 'challenge';
-  if (game.mode === 'challenge') {
-    const d = game.score - challenge.score;
-    vs.textContent = d > 0 ? `🏆 ${challenge.name}님(${challenge.score}점)을 ${d}점 차로 이겼어요!`
-      : d === 0 ? `🤝 ${challenge.name}님과 동점이에요!`
-      : `😢 ${challenge.name}님(${challenge.score}점)에게 ${-d}점 졌어요`;
-  }
   if (inRoom) {
     Room.sendScore(game.score, true);
     $('endTitle').textContent = '판 종료!';
@@ -477,35 +458,16 @@ $('leaveRoom').onclick = leaveRoom;
 $('roomLeave2').onclick = leaveRoom;
 $('copyCode').onclick = async () => {
   try { await navigator.clipboard.writeText(Room.code); toast('초대코드를 복사했어요! (화면에는 가려진 채로 유지돼요)'); }
-  catch { prompt('초대코드', Room.code); }
+  catch { toast('복사하지 못했어요. 코드 보기를 눌러 직접 확인해 주세요.'); }
 };
 // 초대 링크는 공유창 없이 바로 클립보드로
 $('invite').onclick = async () => {
   const url = new URL(location.pathname, location.origin);
   url.searchParams.set('room', Room.code);
   try { await navigator.clipboard.writeText(url.href); toast('초대 링크를 복사했어요! 친구에게 붙여넣어 보내세요'); }
-  catch { prompt('초대 링크', url.href); }
+  catch { toast('복사하지 못했어요. 브라우저의 클립보드 권한을 확인해 주세요.'); }
 };
 
-// ---------- 공유 ----------
-async function shareLink(text, href, copiedMsg) {
-  try {
-    if (navigator.share) { await navigator.share({ title: '사과게임', text, url: href }); return; }
-    await navigator.clipboard.writeText(`${text}\n${href}`);
-    toast(copiedMsg);
-  } catch (e) {
-    if (e && e.name === 'AbortError') return;
-    prompt('아래 링크를 복사해서 보내세요', href);
-  }
-}
-function share() {
-  const url = new URL(location.pathname, location.origin);
-  url.searchParams.set('c', game.seed);
-  url.searchParams.set('s', game.score);
-  const n = $('nick').value.trim();
-  if (n) url.searchParams.set('n', n);
-  shareLink(`🍎 사과게임 ${game.score}점! 같은 판으로 나를 이겨 봐`, url.href, '도전장 링크를 복사했어요. 친구에게 붙여넣어 보내세요!');
-}
 function toast(msg) {
   const t = $('toast');
   t.textContent = msg; t.style.display = 'block';
@@ -515,9 +477,7 @@ function toast(msg) {
 // ---------- 버튼 ----------
 $('playDaily').onclick = () => { nick(); start('daily', dailySeed()); };
 $('playSolo').onclick = () => { nick(); start('solo', randomSeed()); };
-$('playChallenge').onclick = () => { nick(); start('challenge', challenge.seed); };
 $('again').onclick = () => start(game.mode, game.seed);
-$('share').onclick = share;
 $('quit').onclick = () => { if (game.playing) finish(false); };
 $('home').onclick = () => { loadDailyTop(); show('startOverlay'); };
 
@@ -529,12 +489,6 @@ $('bgmBtn').onclick = () => { Sound.toggleBgm(); if (Sound.bgmOn && game.playing
 $('sfxBtn').onclick = () => { Sound.toggleSfx(); syncSoundButtons(); };
 syncSoundButtons();
 
-if (challenge) {
-  const box = $('challengeBox');
-  box.hidden = false;
-  box.textContent = `📨 ${challenge.name}님이 ${challenge.score}점으로 도전장을 보냈어요!`;
-  $('playChallenge').hidden = false;
-}
 const invited = Room.normalize(new URLSearchParams(location.search).get('room'));
 if (invited.length === 5) {
   $('joinCode').value = invited;
