@@ -102,8 +102,6 @@ function paint() {
   game.cells.forEach((el) => el.classList.remove('sel'));
   out.forEach((i) => game.cells[i].classList.add('sel'));
   Object.assign(selbox.style, { display: 'block', left: x1 + 'px', top: y1 + 'px', width: w + 'px', height: h + 'px' });
-  selbox.classList.toggle('ok', sum === 10);
-  $('selsum').textContent = out.length ? `합 ${sum}` : '';
   return { out, sum };
 }
 board.addEventListener('pointerdown', (e) => {
