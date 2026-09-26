@@ -4,23 +4,30 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>사과게임 대결 - 합이 10이 되게 사과를 묶어요 | 버들</title>
-<meta name="description" content="숫자 사과를 드래그해서 합이 10이 되면 사라져요. 2분 동안 최고 점수에 도전하고, 같은 판으로 친구에게 도전장을 보내 보세요. 설치 없이 무료로 즐기는 사과게임.">
+<meta name="description" content="숫자 사과를 드래그해서 합이 10이 되면 사라져요. 방을 만들어 초대코드로 친구와 실시간 점수 대결! 설치 없이 무료로 즐기는 사과게임.">
 <link rel="canonical" href="https://bbdddd0706.github.io/apple-game/">
 <meta name="google-site-verification" content="MvUY2g0-M_AKfOrNFpUJFnytvL8OPrw4plyCOSH2vSU">
 <meta property="og:title" content="사과게임 대결">
-<meta property="og:description" content="합이 10이 되게 사과를 묶어요. 같은 판으로 친구와 점수 대결!">
+<meta property="og:description" content="합이 10이 되게 사과를 묶어요. 초대코드로 친구와 실시간 점수 대결!">
 <link rel="stylesheet" href="style.css">
 <style>
   body { overscroll-behavior: none; }
-  .game { display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 4px; }
-  .hud { width: 100%; max-width: 980px; display: flex; align-items: center; gap: 12px; }
-  .hud .score { font-size: 1.4rem; font-weight: 800; min-width: 90px; }
+  .game { display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 4px; }
+  .hud { width: 100%; max-width: 980px; display: flex; align-items: center; gap: 10px; }
+  .hud .score { font-size: 1.4rem; font-weight: 800; min-width: 80px; }
   .hud .score small { font-size: .8rem; color: var(--muted); font-weight: 600; margin-left: 4px; }
-  .hud .mode { font-size: .85rem; color: var(--muted); white-space: nowrap; }
-  .timebar { flex: 1; height: 12px; background: var(--line); border-radius: 99px; overflow: hidden; }
+  .hud .mode { font-size: .85rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
+  .timebar { flex: 1; height: 12px; background: var(--line); border-radius: 99px; overflow: hidden; min-width: 60px; }
   .timebar > div { height: 100%; width: 100%; background: var(--accent-2); transition: width .25s linear, background .3s; }
   .timebar > div.low { background: var(--accent); }
-  .hud button { padding: 6px 12px; font-size: .85rem; }
+  .hud button, .sound button { padding: 6px 10px; font-size: .85rem; }
+  .sound { display: flex; gap: 6px; }
+  .sound button.off { opacity: .45; }
+
+  .live { width: 100%; max-width: 980px; display: flex; gap: 6px; flex-wrap: wrap; min-height: 0; }
+  .live:empty { display: none; }
+  .live span { background: var(--card); border: 1px solid var(--line); border-radius: 99px; padding: 2px 10px; font-size: .85rem; font-weight: 700; }
+  .live span.me { border-color: var(--accent); color: var(--accent); }
 
   .board-wrap { position: relative; }
   .board {
@@ -28,51 +35,76 @@
     background: var(--board); border: 2px solid var(--board-line); border-radius: 16px;
     padding: 6px; touch-action: none; user-select: none; -webkit-user-select: none;
   }
-  .cell { width: var(--cell); height: var(--cell); display: flex; align-items: center; justify-content: center; }
-  .apple {
-    position: relative; width: 82%; height: 78%; margin-top: 8%;
-    border-radius: 46% 46% 50% 50% / 50% 50% 56% 56%;
-    background: radial-gradient(circle at 32% 30%, #ff8a7a 0 12%, transparent 13%),
-                radial-gradient(circle at 50% 60%, #e8453a, #c42d25);
-    color: #fff; font-weight: 800; font-size: calc(var(--cell) * .42);
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: inset 0 -3px 0 rgba(0,0,0,.12);
-    transition: transform .12s;
+  .cell { width: var(--cell); height: var(--cell); display: flex; align-items: center; justify-content: center; position: relative; }
+  .apple { position: relative; width: 94%; height: 94%; transition: transform .12s, filter .12s; }
+  .apple svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  .apple b {
+    position: absolute; left: 0; right: 0; top: 56%; transform: translateY(-50%); text-align: center;
+    color: #fff; font-weight: 900; font-size: calc(var(--cell) * .4); line-height: 1;
+    text-shadow: 0 1px 2px rgba(120, 10, 5, .55);
   }
-  .apple::before { /* 꼭지 */
-    content: ""; position: absolute; top: -14%; left: 48%; width: 7%; height: 20%;
-    background: #6b4226; border-radius: 3px; transform: rotate(8deg);
-  }
-  .apple::after { /* 잎 */
-    content: ""; position: absolute; top: -12%; left: 54%; width: 26%; height: 15%;
-    background: #4caf50; border-radius: 0 80% 0 80%; transform: rotate(-12deg);
-  }
-  .cell.sel .apple { transform: scale(1.1); filter: brightness(1.12); }
+  .cell.sel .apple { transform: scale(1.12) translateY(-4%); filter: brightness(1.12) drop-shadow(0 3px 4px rgba(0,0,0,.2)); }
   .cell.gone .apple { visibility: hidden; }
   .cell.pop .apple { animation: pop .28s ease-out forwards; visibility: visible; }
-  @keyframes pop { to { transform: scale(1.5) translateY(-20%); opacity: 0; } }
+  @keyframes pop { to { transform: scale(1.5) translateY(-25%); opacity: 0; } }
   .selbox { position: absolute; border: 2px solid var(--accent-2); background: var(--select); border-radius: 8px; pointer-events: none; display: none; }
   .selbox.ok { border-color: var(--accent); background: var(--select-ok); }
-  .selbox span { position: absolute; top: -26px; left: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 0 8px; font-weight: 800; font-size: .85rem; }
+  .selbox span { position: absolute; top: -26px; left: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 0 8px; font-weight: 800; font-size: .85rem; white-space: nowrap; }
 
   .overlay {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-    background: color-mix(in srgb, var(--bg) 88%, transparent); border-radius: 16px; padding: 16px; z-index: 5;
+    background: color-mix(in srgb, var(--bg) 88%, transparent); border-radius: 16px; padding: 12px; z-index: 5; overflow: auto;
   }
   .overlay[hidden] { display: none; }
-  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; width: min(380px, 100%); text-align: center; box-shadow: 0 8px 30px rgba(0,0,0,.08); }
-  .panel h2 { margin: 0 0 4px; font-size: 1.4rem; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 20px; width: min(380px, 100%); text-align: center; box-shadow: 0 8px 30px rgba(0,0,0,.08); }
+  .panel h2 { margin: 0 0 4px; font-size: 1.35rem; }
   .panel p { margin: 6px 0; color: var(--muted); }
   .panel .big { font-size: 3rem; font-weight: 900; color: var(--accent); line-height: 1.1; margin: 8px 0; }
-  .panel .btns { display: grid; gap: 8px; margin-top: 14px; }
+  .panel .btns { display: grid; gap: 8px; margin-top: 12px; }
   .panel input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; text-align: center; }
+  .panel .join { display: flex; gap: 6px; }
+  .panel .join input { text-transform: uppercase; letter-spacing: .15em; font-weight: 800; }
+  .panel .join button { white-space: nowrap; }
+  .divider { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .8rem; margin: 12px 0 4px; }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .code { font-size: 2.4rem; font-weight: 900; letter-spacing: .2em; color: var(--accent); margin: 4px 0; }
+  .players { list-style: none; padding: 0; margin: 10px 0; text-align: left; }
+  .players li { display: flex; justify-content: space-between; padding: 6px 10px; border-radius: 10px; background: var(--bg); margin-bottom: 4px; font-weight: 700; }
+  .players li.me { outline: 2px solid var(--accent); }
+  .players li .rank { color: var(--muted); margin-right: 8px; }
   .challenge { background: color-mix(in srgb, var(--accent) 12%, var(--card)); border-radius: 12px; padding: 10px; margin: 10px 0; font-weight: 700; }
-  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-weight: 700; display: none; z-index: 10; }
+  .count { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 6rem; font-weight: 900; color: var(--accent); z-index: 6; pointer-events: none; text-shadow: 0 4px 0 var(--card); }
+  .count[hidden] { display: none; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-weight: 700; display: none; z-index: 10; max-width: 90vw; text-align: center; }
   .info { max-width: 760px; margin: 28px auto 0; color: var(--muted); font-size: .95rem; }
   .info h2 { color: var(--text); font-size: 1.1rem; }
 </style>
 </head>
 <body>
+<!-- 사과 그림 (직접 그린 SVG) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <radialGradient id="appleBody" cx="36%" cy="34%" r="75%">
+      <stop offset="0" stop-color="#ff7a6b"/>
+      <stop offset=".45" stop-color="#ee3b2f"/>
+      <stop offset="1" stop-color="#b3201a"/>
+    </radialGradient>
+    <linearGradient id="appleLeaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8fd14f"/>
+      <stop offset="1" stop-color="#3f9b3a"/>
+    </linearGradient>
+    <symbol id="apple" viewBox="0 0 100 100">
+      <ellipse cx="50" cy="95" rx="28" ry="4" fill="rgba(0,0,0,.12)"/>
+      <path d="M50 30 C42 21 14 20 12 50 C10 76 30 95 42 93 C46 92 48 90 50 90 C52 90 54 92 58 93 C70 95 90 76 88 50 C86 20 58 21 50 30 Z" fill="url(#appleBody)"/>
+      <path d="M50 30 C47 24 44 22 40 21" fill="none" stroke="rgba(120,20,15,.35)" stroke-width="2" stroke-linecap="round"/>
+      <path d="M50 31 C50 22 52 14 57 8" fill="none" stroke="#6b3f22" stroke-width="5" stroke-linecap="round"/>
+      <path d="M55 19 C60 7 77 5 86 11 C79 22 64 25 55 19 Z" fill="url(#appleLeaf)"/>
+      <path d="M57 18 C66 14 75 12 83 12" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="1.5" stroke-linecap="round"/>
+      <ellipse cx="30" cy="46" rx="6" ry="12" transform="rotate(-22 30 46)" fill="#fff" opacity=".35"/>
+    </symbol>
+  </defs>
+</svg>
+
 <header class="site">
   <a class="logo" href="./">🍎 사과게임 대결</a>
   <nav><a href="guide.html">게임 방법 · 공략</a><a href="privacy.html">개인정보처리방침</a></nav>
@@ -84,37 +116,74 @@
       <div class="score"><span id="score">0</span><small>점</small></div>
       <div class="mode" id="modeLabel"></div>
       <div class="timebar"><div id="time"></div></div>
-      <button type="button" id="quit">그만하기</button>
+      <div class="sound">
+        <button type="button" id="bgmBtn" title="배경음악 켜기/끄기">🎵</button>
+        <button type="button" id="sfxBtn" title="효과음 켜기/끄기">🔔</button>
+      </div>
+      <button type="button" id="quit">그만</button>
     </div>
+    <div class="live" id="live"></div>
 
     <div class="board-wrap">
       <div class="board" id="board"><div class="selbox" id="selbox"><span id="selsum"></span></div></div>
+      <div class="count" id="count" hidden></div>
 
+      <!-- 시작 화면 -->
       <div class="overlay" id="startOverlay">
         <div class="panel">
           <h2>사과게임</h2>
           <p>드래그해서 <b>합이 10</b>이 되게 사과를 묶으세요.<br>2분 동안 많이 없앨수록 높은 점수!</p>
           <div class="challenge" id="challengeBox" hidden></div>
-          <input id="nick" type="text" maxlength="10" placeholder="닉네임 (도전장에 표시돼요)">
+          <input id="nick" type="text" maxlength="10" placeholder="닉네임">
           <div class="btns">
             <button type="button" class="primary" id="playChallenge" hidden>도전 수락하기</button>
             <button type="button" class="primary" id="playDaily">오늘의 판</button>
             <button type="button" id="playSolo">혼자 하기 (랜덤 판)</button>
           </div>
-          <p style="font-size:.85rem;margin-top:12px">오늘의 판은 모든 사람이 같은 판으로 겨뤄요.</p>
+          <div class="divider">친구와 실시간 대결</div>
+          <div class="btns">
+            <button type="button" class="green" id="makeRoom">방 만들기</button>
+            <div class="join">
+              <input id="joinCode" type="text" maxlength="5" placeholder="초대코드" autocomplete="off">
+              <button type="button" id="joinRoom">참여</button>
+            </div>
+          </div>
         </div>
       </div>
 
+      <!-- 대기실 -->
+      <div class="overlay" id="lobbyOverlay" hidden>
+        <div class="panel">
+          <h2>대기실</h2>
+          <p>초대코드</p>
+          <div class="code" id="roomCode">-----</div>
+          <div class="btns"><button type="button" id="invite">📨 초대 링크 보내기</button></div>
+          <ul class="players" id="lobbyPlayers"></ul>
+          <p id="lobbyMsg"></p>
+          <div class="btns">
+            <button type="button" class="primary" id="roomStart" hidden>게임 시작</button>
+            <button type="button" id="leaveRoom">나가기</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 결과 -->
       <div class="overlay" id="endOverlay" hidden>
         <div class="panel">
           <h2 id="endTitle">시간 종료!</h2>
           <div class="big"><span id="endScore">0</span>점</div>
           <p id="endBest"></p>
           <div class="challenge" id="endVs" hidden></div>
-          <div class="btns">
+          <ul class="players" id="endPlayers" hidden></ul>
+          <div class="btns" id="soloBtns">
             <button type="button" class="primary" id="share">📨 친구에게 도전장 보내기</button>
             <button type="button" class="green" id="again">같은 판 다시 하기</button>
             <button type="button" id="home">처음으로</button>
+          </div>
+          <div class="btns" id="roomBtns" hidden>
+            <button type="button" class="primary" id="rematch" hidden>한 판 더</button>
+            <p id="rematchMsg" hidden>방장이 다음 판을 시작하길 기다리는 중…</p>
+            <button type="button" id="roomLeave2">방 나가기</button>
           </div>
         </div>
       </div>
@@ -123,7 +192,7 @@
 
   <section class="info">
     <h2>사과게임은 어떻게 하나요?</h2>
-    <p>판 위의 사과에는 1부터 9까지 숫자가 적혀 있어요. 마우스나 손가락으로 네모를 그려 사과를 묶고, 묶은 숫자의 합이 정확히 10이면 사과가 사라지면서 사라진 개수만큼 점수를 얻어요. 제한 시간은 2분이에요. 자세한 규칙과 고득점 요령은 <a href="guide.html">게임 방법 · 공략</a>에서 볼 수 있어요.</p>
+    <p>판 위의 사과에는 1부터 9까지 숫자가 적혀 있어요. 마우스나 손가락으로 네모를 그려 사과를 묶고, 묶은 숫자의 합이 정확히 10이면 사과가 사라지면서 사라진 개수만큼 점수를 얻어요. 제한 시간은 2분이에요. <b>방 만들기</b>를 누르면 초대코드가 나오고, 친구가 코드를 입력해 들어오면 같은 판으로 실시간 점수 대결을 할 수 있어요. 자세한 규칙과 고득점 요령은 <a href="guide.html">게임 방법 · 공략</a>에서 볼 수 있어요.</p>
   </section>
 </main>
 
@@ -135,6 +204,9 @@
   <a href="privacy.html">개인정보처리방침</a>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="music.js"></script>
+<script src="room.js"></script>
 <script src="game.js"></script>
 </body>
 </html>
