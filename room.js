@@ -6,10 +6,18 @@ const Room = (() => {
   const LIMIT = 64;
   let peer = null, conn = null, conns = {}, players = {}, order = [], h = {};
   let max = 8, hostId = '', flushT = null;
+  let dids = {}, banned = new Set(); // 기기 식별값 (강퇴한 기기는 다시 못 들어온다)
   let state = { isHost: false, code: '', myId: '', inGame: false };
 
   const clean = (s) => String(s || '').trim().slice(0, 10) || '플레이어';
   const newCode = () => Array.from({ length: 5 }, () => ALPHABET[Math.floor(Math.random() * ALPHABET.length)]).join('');
+  function deviceId() {
+    try {
+      let d = localStorage.getItem('did');
+      if (!d) { d = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('did', d); }
+      return d;
+    } catch { return ''; }
+  }
   const list = () => order.filter((id) => players[id]).map((id) => ({ id, ...players[id] }));
   const snapshot = () => ({ players: list(), max, hostId });
 
@@ -37,9 +45,12 @@ const Room = (() => {
     if (!msg || typeof msg !== 'object') return;
     const p = players[c.peer];
     if (msg.t === 'hello') {
+      const did = String(msg.did || '').slice(0, 40);
+      if (did && banned.has(did)) return deny(c, '방장이 내보낸 방이라 다시 들어갈 수 없어요.');
       if (state.inGame) return deny(c, '이미 게임이 진행 중이에요. 판이 끝난 뒤 다시 들어와 주세요.');
       if (order.length >= max) return deny(c, `방이 가득 찼어요 (최대 ${max}명)`);
       conns[c.peer] = c;
+      dids[c.peer] = did;
       addPlayer(c.peer, msg.name, false);
       pushLobby();
     } else if (!p) {
@@ -65,7 +76,7 @@ const Room = (() => {
   function host(name, handlers) {
     h = handlers;
     state = { isHost: true, code: newCode(), myId: '', inGame: false };
-    players = {}; order = []; conns = {};
+    players = {}; order = []; conns = {}; dids = {}; banned = new Set();
     peer = new Peer(PREFIX + state.code, { debug: 0 });
     peer.on('open', (id) => {
       state.myId = hostId = id;
@@ -96,7 +107,7 @@ const Room = (() => {
     peer.on('open', (id) => {
       state.myId = id;
       conn = peer.connect(PREFIX + code, { reliable: true });
-      conn.on('open', () => { clearTimeout(fail); conn.send({ t: 'hello', name: clean(name) }); });
+      conn.on('open', () => { clearTimeout(fail); conn.send({ t: 'hello', name: clean(name), did: deviceId() }); });
       conn.on('data', (msg) => {
         if (!msg || typeof msg !== 'object') return;
         if (msg.t === 'lobby') {
@@ -129,6 +140,7 @@ const Room = (() => {
     if (!state.isHost || id === hostId || !conns[id]) return;
     const c = conns[id];
     try { c.send({ t: 'kick' }); } catch {}
+    if (dids[id]) banned.add(dids[id]);
     removePlayer(id);
     setTimeout(() => c.close(), 300);
     pushLobby();
