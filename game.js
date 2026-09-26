@@ -160,8 +160,14 @@ function hasMove() {
 }
 
 // ---------- 화면 전환 ----------
-const overlays = ['startOverlay', 'lobbyOverlay', 'endOverlay'];
-function show(id) { overlays.forEach((o) => ($(o).hidden = o !== id)); }
+const overlays = ['startOverlay', 'endOverlay'];
+function show(id) {
+  const lobby = id === 'lobby';
+  $('lobbyScreen').hidden = !lobby;
+  $('gameScreen').hidden = lobby;
+  overlays.forEach((o) => ($(o).hidden = o !== id));
+  if (lobby) window.scrollTo(0, 0);
+}
 
 function modeText() {
   if (game.mode === 'daily') return `오늘의 판 · ${kstDate().slice(5).replace('-', '/')}`;
@@ -285,19 +291,70 @@ function renderRanking() {
   }
 }
 
+// 대기실 그리기
+const MAX_SEATS = 8;
+function setCode(code) {
+  const box = $('roomCode');
+  box.replaceChildren();
+  for (let i = 0; i < 5; i++) {
+    const s = document.createElement('span');
+    s.textContent = code ? code[i] : '•';
+    if (!code) s.className = 'dot';
+    box.append(s);
+  }
+}
+function renderLobby(players) {
+  const ul = $('lobbyPlayers');
+  ul.replaceChildren();
+  for (let i = 0; i < MAX_SEATS; i++) {
+    const p = players[i];
+    const li = document.createElement('li');
+    if (!p) {
+      li.className = 'seat empty';
+      li.textContent = i === players.length ? '초대 대기 중…' : '빈 자리';
+      ul.append(li);
+      continue;
+    }
+    li.className = 'seat' + (p.id === Room.myId ? ' me' : '');
+    const av = document.createElement('div');
+    av.className = 'avatar';
+    av.innerHTML = APPLE_SVG;
+    const b = document.createElement('b');
+    b.textContent = p.name.slice(0, 1);
+    av.append(b);
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = p.name;
+    const tag = document.createElement('span');
+    tag.className = 'tag' + (i === 0 ? ' host' : '');
+    tag.textContent = i === 0 ? '방장' : (p.id === Room.myId ? '나' : '준비 완료');
+    if (i === 0) { const c = document.createElement('span'); c.className = 'crown'; c.textContent = '👑'; li.append(c); }
+    li.append(av, name, tag);
+    ul.append(li);
+  }
+  $('seatCount').textContent = `${players.length}/${MAX_SEATS}`;
+  const btn = $('roomStart');
+  btn.disabled = players.length < 2;
+  btn.textContent = players.length < 2 ? '친구가 들어오면 시작할 수 있어요' : `게임 시작 (${players.length}명)`;
+  if (Room.isHost) $('lobbyMsg').textContent = players.length < 2 ? '초대코드를 친구에게 알려 주세요' : '모두 모였으면 시작!';
+  else if (players.length) $('lobbyMsg').textContent = '곧 시작해요. 준비하세요!';
+}
+
 const roomHandlers = {
   onReady(code) {
-    $('roomCode').textContent = code;
+    setCode(code);
     $('roomStart').hidden = false;
-    $('lobbyMsg').textContent = '친구가 들어오면 게임 시작을 누르세요.';
+    $('lobbyBadge').textContent = '👑 내가 방장';
+    $('lobbyBadge').classList.remove('wait');
   },
   onLobby(players) {
     roomPlayers = players;
-    renderPlayers($('lobbyPlayers'), players, false);
+    renderLobby(players);
     if (!Room.isHost) {
-      $('roomCode').textContent = Room.code;
-      $('lobbyMsg').textContent = '방장이 게임을 시작하길 기다리는 중…';
-      if (!game.playing && $('endOverlay').hidden) show('lobbyOverlay');
+      setCode(Room.code);
+      $('lobbyBadge').textContent = '방장을 기다리는 중';
+      $('lobbyBadge').classList.add('wait');
+      if (!game.playing && $('endOverlay').hidden) show('lobby');
     }
     if (!$('endOverlay').hidden && game.mode === 'room') renderRanking();
   },
@@ -320,27 +377,34 @@ function leaveRoom() {
 }
 
 $('makeRoom').onclick = () => {
-  $('roomCode').textContent = '·····';
-  $('lobbyPlayers').replaceChildren();
+  setCode(null);
+  renderLobby([]);
   $('roomStart').hidden = true;
-  $('lobbyMsg').textContent = '방을 만드는 중…';
-  show('lobbyOverlay');
+  $('lobbyBadge').textContent = '방 만드는 중…';
+  $('lobbyMsg').textContent = '';
+  show('lobby');
   Room.host(nick(), roomHandlers);
 };
 $('joinRoom').onclick = () => {
   const code = Room.normalize($('joinCode').value);
   if (code.length !== 5) { toast('초대코드 5자리를 입력해 주세요.'); return; }
-  $('roomCode').textContent = code;
-  $('lobbyPlayers').replaceChildren();
+  setCode(code);
+  renderLobby([]);
   $('roomStart').hidden = true;
-  $('lobbyMsg').textContent = '방에 들어가는 중…';
-  show('lobbyOverlay');
+  $('lobbyBadge').textContent = '입장하는 중…';
+  $('lobbyBadge').classList.add('wait');
+  $('lobbyMsg').textContent = '';
+  show('lobby');
   Room.join(code, nick(), roomHandlers);
 };
 $('joinCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('joinRoom').click(); });
 $('roomStart').onclick = () => Room.start(randomSeed());
 $('rematch').onclick = () => Room.start(randomSeed());
 $('leaveRoom').onclick = leaveRoom;
+$('copyCode').onclick = async () => {
+  try { await navigator.clipboard.writeText(Room.code); toast(`초대코드 ${Room.code} 복사했어요!`); }
+  catch { prompt('초대코드', Room.code); }
+};
 $('roomLeave2').onclick = leaveRoom;
 $('invite').onclick = () => {
   const url = new URL(location.pathname, location.origin);

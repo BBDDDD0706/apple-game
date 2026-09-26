@@ -76,6 +76,64 @@
   .count { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 6rem; font-weight: 900; color: var(--accent); z-index: 6; pointer-events: none; text-shadow: 0 4px 0 var(--card); }
   .count[hidden] { display: none; }
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-weight: 700; display: none; z-index: 10; max-width: 90vw; text-align: center; }
+  /* ---------- 대기실 ---------- */
+  .lobby { max-width: 560px; margin: 4px auto 0; display: flex; flex-direction: column; gap: 16px; }
+  .lobby-top { display: flex; justify-content: space-between; align-items: center; }
+  .ghost { background: transparent; border: none; color: var(--muted); padding: 6px 0; font-weight: 700; }
+  .lobby-badge { background: var(--accent-2); color: #fff; font-size: .8rem; font-weight: 800; padding: 4px 12px; border-radius: 99px; }
+  .lobby-badge.wait { background: var(--muted); }
+  .code-card {
+    position: relative; overflow: hidden; text-align: center; padding: 22px 18px 18px; border-radius: 22px; color: #fff;
+    background: linear-gradient(135deg, #ef4b3f 0%, #d8322a 55%, #b8241d 100%);
+    box-shadow: 0 12px 30px rgba(200, 50, 40, .25);
+  }
+  .code-card::before, .code-card::after { /* 배경 장식 사과 */
+    content: ""; position: absolute; width: 140px; height: 140px; border-radius: 50%;
+    background: rgba(255,255,255,.08);
+  }
+  .code-card::before { top: -50px; right: -40px; }
+  .code-card::after { bottom: -70px; left: -30px; width: 180px; height: 180px; }
+  .code-label { font-size: .85rem; font-weight: 700; opacity: .85; letter-spacing: .1em; }
+  .code-chars { display: flex; justify-content: center; gap: 8px; margin: 10px 0 16px; position: relative; z-index: 1; }
+  .code-chars span {
+    width: 52px; height: 64px; display: flex; align-items: center; justify-content: center;
+    background: #fff; color: #d8322a; border-radius: 14px; font-size: 2rem; font-weight: 900;
+    box-shadow: 0 4px 0 rgba(0,0,0,.15);
+  }
+  .code-chars span.dot { color: #f3b3ad; animation: blink 1s infinite alternate; }
+  @keyframes blink { to { opacity: .4; } }
+  .code-actions { display: flex; gap: 8px; justify-content: center; position: relative; z-index: 1; flex-wrap: wrap; }
+  .code-actions button { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.35); color: #fff; padding: 10px 14px; }
+  .code-actions button.primary { background: #fff; color: #d8322a; border-color: #fff; }
+  .seats-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .seats-head h2 { margin: 0; font-size: 1.1rem; }
+  .seats-head h2 span { color: var(--muted); font-weight: 700; font-size: .95rem; margin-left: 4px; }
+  .lobby-msg { color: var(--muted); font-size: .9rem; }
+  .seats { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  @media (max-width: 480px) { .seats { grid-template-columns: repeat(2, 1fr); } }
+  .seat {
+    position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 14px 8px 10px; text-align: center; min-height: 118px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    animation: seatIn .35s ease-out;
+  }
+  @keyframes seatIn { from { transform: translateY(8px) scale(.95); opacity: 0; } }
+  .seat.me { border: 2px solid var(--accent); }
+  .seat.empty { background: transparent; border-style: dashed; color: var(--muted); justify-content: center; animation: none; }
+  .seat .avatar { width: 52px; height: 52px; position: relative; }
+  .seat .avatar svg { width: 100%; height: 100%; }
+  .seat .avatar b { position: absolute; left: 0; right: 0; top: 56%; transform: translateY(-50%); color: #fff; font-weight: 900; font-size: 1.1rem; text-shadow: 0 1px 2px rgba(120,10,5,.5); }
+  .seat .name { font-weight: 800; font-size: .95rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .seat .tag { font-size: .72rem; font-weight: 800; padding: 1px 8px; border-radius: 99px; background: var(--bg); color: var(--muted); }
+  .seat .tag.host { background: #fff4d6; color: #b7791f; }
+  .seat .crown { position: absolute; top: -10px; left: 50%; transform: translateX(-50%); font-size: 1.2rem; }
+  .lobby-rules { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .lobby-rules span { background: var(--card); border: 1px solid var(--line); border-radius: 99px; padding: 4px 12px; font-size: .85rem; color: var(--muted); font-weight: 700; }
+  .start-btn {
+    width: 100%; padding: 16px; font-size: 1.15rem; border-radius: 16px; border: none;
+    background: var(--accent-2); color: #fff; box-shadow: 0 5px 0 color-mix(in srgb, var(--accent-2) 70%, #000);
+  }
+  .start-btn:disabled { background: var(--line); color: var(--muted); box-shadow: none; cursor: not-allowed; }
+
   .info { max-width: 760px; margin: 28px auto 0; color: var(--muted); font-size: .95rem; }
   .info h2 { color: var(--text); font-size: 1.1rem; }
 </style>
@@ -111,7 +169,36 @@
 </header>
 
 <main>
-  <section class="game">
+  <!-- 대기실 (방을 만들거나 들어오면 게임 화면 대신 보인다) -->
+  <section class="lobby" id="lobbyScreen" hidden>
+    <div class="lobby-top">
+      <button type="button" class="ghost" id="leaveRoom">← 나가기</button>
+      <span class="lobby-badge" id="lobbyBadge">대기실</span>
+    </div>
+
+    <div class="code-card">
+      <div class="code-label">초대코드</div>
+      <div class="code-chars" id="roomCode"></div>
+      <div class="code-actions">
+        <button type="button" id="copyCode">📋 코드 복사</button>
+        <button type="button" class="primary" id="invite">📨 초대 링크 보내기</button>
+      </div>
+    </div>
+
+    <div class="seats-head">
+      <h2>참가자 <span id="seatCount">0/8</span></h2>
+      <span class="lobby-msg" id="lobbyMsg"></span>
+    </div>
+    <ul class="seats" id="lobbyPlayers"></ul>
+
+    <div class="lobby-rules">
+      <span>⏱ 2분</span><span>🍎 같은 판으로 대결</span><span>🏆 많이 없앤 사람이 승리</span>
+    </div>
+
+    <button type="button" class="start-btn" id="roomStart" hidden>게임 시작</button>
+  </section>
+
+  <section class="game" id="gameScreen">
     <div class="hud">
       <div class="score"><span id="score">0</span><small>점</small></div>
       <div class="mode" id="modeLabel"></div>
@@ -147,22 +234,6 @@
               <input id="joinCode" type="text" maxlength="5" placeholder="초대코드" autocomplete="off">
               <button type="button" id="joinRoom">참여</button>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 대기실 -->
-      <div class="overlay" id="lobbyOverlay" hidden>
-        <div class="panel">
-          <h2>대기실</h2>
-          <p>초대코드</p>
-          <div class="code" id="roomCode">-----</div>
-          <div class="btns"><button type="button" id="invite">📨 초대 링크 보내기</button></div>
-          <ul class="players" id="lobbyPlayers"></ul>
-          <p id="lobbyMsg"></p>
-          <div class="btns">
-            <button type="button" class="primary" id="roomStart" hidden>게임 시작</button>
-            <button type="button" id="leaveRoom">나가기</button>
           </div>
         </div>
       </div>
