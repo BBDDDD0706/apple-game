@@ -1,0 +1,58 @@
+:root {
+  --bg: #fbf6ee;
+  --card: #ffffff;
+  --text: #2a2118;
+  --muted: #7a6c5d;
+  --line: #eadfce;
+  --board: #e8f3df;
+  --board-line: #cfe4bf;
+  --accent: #e2483d;
+  --accent-2: #3f9b4f;
+  --select: rgba(63, 155, 79, .18);
+  --select-ok: rgba(226, 72, 61, .22);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17140f;
+    --card: #221d16;
+    --text: #f1e9dd;
+    --muted: #a8998a;
+    --line: #372f25;
+    --board: #1e2a1b;
+    --board-line: #2c3e27;
+    --accent: #f0625a;
+    --accent-2: #5cbf6c;
+    --select: rgba(92, 191, 108, .2);
+    --select-ok: rgba(240, 98, 90, .28);
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Pretendard", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  line-height: 1.6;
+}
+a { color: var(--accent-2); }
+header.site, footer.site {
+  max-width: 1100px; margin: 0 auto; padding: 12px 16px;
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+}
+header.site .logo { font-weight: 800; font-size: 1.15rem; color: var(--text); text-decoration: none; margin-right: auto; }
+header.site nav { display: flex; gap: 16px; }
+header.site nav a, footer.site a { color: var(--muted); text-decoration: none; font-size: .95rem; }
+footer.site { color: var(--muted); font-size: .85rem; border-top: 1px solid var(--line); margin-top: 40px; }
+main { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+.prose { max-width: 760px; }
+.prose h1 { font-size: 1.7rem; letter-spacing: -0.02em; }
+.prose h2 { margin-top: 36px; font-size: 1.25rem; }
+.prose h3 { font-size: 1.05rem; margin-bottom: 4px; }
+.lead { color: var(--muted); }
+button {
+  font: inherit; cursor: pointer; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--card); color: var(--text); padding: 12px 18px; font-weight: 700;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.green { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+button:active { transform: translateY(1px); }
